@@ -1,6 +1,6 @@
 import { db } from "../db/db.js";
 import { User } from "../db/models/User.js";
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import { validateEmail,validatePassword,validateUser,checkEmailExists,checkUserExists } from "../utils/validation.js";
 import jwt from 'jsonwebtoken';
 

@@ -1,6 +1,8 @@
 import { Todo } from "../db/models/Todo.js";
 import { Sequelize } from "sequelize";
 import { User } from "../db/models/User.js";
+import { validStatus,isValidDate ,escapeLike} from "../utils/validation.js";
+import {Op} from "sequelize";
 export const createTodo = async (req, res) => {
   try {
     const { title, task, status, due_date, priority } = req.body;
@@ -200,3 +202,226 @@ export const getTodoByPriority=async(req,res)=>{
         return res.status(500).json({message:"Internal server error"});
     }
 }
+
+//add filters in todo
+/*export const getTodoByStatus = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { status } = req.query;
+
+        // Check if userId is provided
+        if (!id) {
+            return res.status(400).json({ message: "userId is required" });
+        }
+
+        // Validate status
+        if (!validStatus(status)) {
+            return res.status(400).json({ message: "Please provide a valid status (Pending, Completed, In-Progress)" });
+        }
+
+        // Check if the user exists
+        const user = await User.findOne({ where: { user_id: id } });
+        if (!user) {
+            return res.status(404).json({ message: "User not found!" });
+        }
+
+        // Fetch the todos based on user_id and status
+        const todos = await Todo.findAll({ where: { user_id: id, status } });
+
+        // Check if no todos are found
+        if (todos.length === 0) {
+            return res.status(404).json({ message: `User has no ${status} tasks` });
+        }
+
+        // Return the todos
+        return res.status(200).json({ todos });
+
+    } catch (err) {
+        console.error("Error in fetching Status wise tasks:", err.message);
+        return res.status(500).json({ message: "Internal server error" });
+    }
+}; */
+
+export const getAllTasks = async (req, res) => {
+    try {
+        const { title, status, due_date, priority } = req.query;
+
+        // Validate status
+        if (status && !validStatus(status)) {
+            return res.status(400).json({ message: "Please provide a valid status" });
+        }
+
+        // Validate due_date
+        if (due_date && !isValidDate(due_date)) {
+            return res.status(400).json({ message: "Please provide a valid date in the format yyyy-MM-DD" });
+        }
+
+        const filters = {};
+
+        // Apply title filter
+        if (title?.trim()) {
+            filters.title = {
+                [Op.like]: `%${escapeLike(title.trim())}%`,
+            };
+        }
+
+        // Apply status filter
+        if (status?.trim()) {
+            filters.status = {
+                [Op.like]: `%${escapeLike(status.trim())}%`,
+            };
+        }
+
+        // Apply due_date filter
+        if (due_date) {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0); // Set to midnight
+        
+            const targetDate = new Date(due_date);
+            targetDate.setHours(23, 59, 59, 999); // End of that day
+        
+            filters.due_date = {
+                [Op.between]: [today, targetDate],
+            };
+        }
+        
+        // Apply priority filter
+        if (priority?.trim()) {
+            filters.priority = {
+                [Op.like]: `%${escapeLike(priority.trim())}%`,
+            };
+        }
+
+        // Fetch tasks based on filters
+        const rows = await Todo.findAll({
+            where: filters,
+        });
+
+        // Check if no rows are found
+        if (rows.length === 0) {
+            return res.status(404).json({ message: "No data found for this filter" });
+        }
+
+        // Return tasks
+        res.status(200).json({
+            data: rows,
+        });
+    } catch (err) {
+        console.error("Error in fetching tasks:", err.message);
+        res.status(500).json({ message: "Internal server error" });
+    }
+};
+
+//filter by due_date
+export const getTaskByDate = async (req, res) => {
+    try {
+      const { id } = req.params; // Extract user id from URL params
+      const { filter } = req.query; // filter = "today", "tomorrow", etc.
+  
+      if (!id) {
+        return res.status(400).json({ message: "User ID is required" });
+      }
+  
+      const startDate = new Date();
+      let endDate = new Date();
+  
+      if (filter === "tomorrow") {
+        startDate.setDate(startDate.getDate() + 1);
+        endDate = new Date(startDate);
+      } else if (filter === "thisWeek") {
+        endDate.setDate(startDate.getDate() + 7);
+      } else if (filter === "thisMonth") {
+        endDate.setDate(startDate.getDate() + 30);
+      } else {
+        // For "today", it's just the current date range.
+        endDate = new Date(startDate);
+      }
+  
+      const rows = await Todo.findAll({
+        where: {
+          user_id: id,
+          due_date: {
+            [Op.between]: [startDate, endDate]
+          }
+        }
+      });
+  
+      // Check if no rows are found
+      if (rows.length === 0) {
+        return res.status(404).json({ message: "No data found for this filter" });
+      }
+  
+      // Return tasks
+      res.status(200).json({
+        data: rows,
+      });
+    } catch (err) {
+      console.log("Error in fetching tasks by date:", err.message);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  };
+
+  //get overdue todos
+  export const getOverdue=async(req,res)=>{
+    try{const {id}=req.params;
+    if(!id){
+        return res.status(400).json({message:"Id is required parameter"});
+    }
+    const user=await User.findOne({where:{user_id:id}});
+    if(!user){
+        return res.status(404).json({message:"user with this Id does not exists"});
+    }
+    const overduetodos=await Todo.findAll({
+        where:{
+            due_date:{
+                [Op.lte]:new Date()
+            },
+            user_id:id,
+            status:"Pending"
+        }
+    });
+    if(overduetodos.length==0){
+        return res.status(400).json({message:"No overdue tasks are there for this user"});
+    }
+    return res.status(200).json({overduetodos});
+  }catch(err){
+    console.log("Error in fetching overdue tasks:",err.message);
+    return res.status(500).json({message:"Internal server error!"});
+  }
+}
+
+//mark all compeleted
+export const markAllCompleted = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { status } = req.body;
+
+        if (!id) {
+            return res.status(400).json({ message: "Id is required parameter" });
+        }
+
+        if (!status) {
+            return res.status(400).json({ message: "Status is required field" });
+        }
+
+        const user = await User.findOne({ where: { user_id: id } });
+        if (!user) {
+            return res.status(404).json({ message: "User with this Id does not exist" });
+        }
+
+        const mark = await Todo.update(
+            { status },
+            { where: { user_id: id } }
+        );
+
+        if (mark[0] === 0) {
+            return res.status(400).json({ message: "No tasks were updated" });
+        }
+
+        return res.status(200).json({ message: "All tasks have been marked as completed" });
+
+    } catch (err) {
+        console.error("Error in updating tasks:", err);
+        return res.status(500).json({ message: "Internal server error!" });
+    }
+};

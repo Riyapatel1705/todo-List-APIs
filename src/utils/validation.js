@@ -36,3 +36,12 @@ export const checkUserExists=async(name)=>{
         console.log("Error checking user:",err.message);
     }
 };
+
+export const validStatus = async (status) => {
+    if (status !== 'Pending' && status !== 'Completed' && status !== 'In-Progress') {
+        throw new Error("Invalid text for status");
+    }
+}
+
+export const isValidDate=(datestr)=>/^\d{4}-\d{2}-\d{2}$/.test(datestr)&&!isNaN(Date.parse(datestr));
+export const escapeLike=(str)=>str.replace(/[%_]/g,"\\$&");
